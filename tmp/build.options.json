@@ -1,0 +1,11 @@
+{
+  "additionalFiles": "/build/sketch/ESP32_aws_iot.ino.cpp",
+  "builtInLibrariesFolders": "/root/arduino/libraries",
+  "customBuildProperties": "build.path=/tmp/build,board=esp32,build.warn_data_percentage=75,runtime.tools.esptool_py.path=/root/.arduino15/packages/esp32/tools/esptool_py/2.6.1,runtime.tools.esptool_py-2.6.1.path=/root/.arduino15/packages/esp32/tools/esptool_py/2.6.1,runtime.tools.mkspiffs.path=/root/.arduino15/packages/esp32/tools/mkspiffs/0.2.3,runtime.tools.mkspiffs-0.2.3.path=/root/.arduino15/packages/esp32/tools/mkspiffs/0.2.3,runtime.tools.xtensa-esp32-elf-gcc.path=/root/.arduino15/packages/esp32/tools/xtensa-esp32-elf-gcc/1.22.0-80-g6c4433a-5.2.0,runtime.tools.xtensa-esp32-elf-gcc-1.22.0-80-g6c4433a-5.2.0.path=/root/.arduino15/packages/esp32/tools/xtensa-esp32-elf-gcc/1.22.0-80-g6c4433a-5.2.0",
+  "fqbn": "esp32:esp32:esp32:PSRAM=disabled,PartitionScheme=default,CPUFreq=240,FlashMode=qio,FlashFreq=80,FlashSize=4M,UploadSpeed=921600,DebugLevel=warn",
+  "hardwareFolders": "/root/arduino/hardware,/root/.arduino15/packages",
+  "otherLibrariesFolders": "/root/Arduino/libraries",
+  "runtime.ide.version": "10809",
+  "sketchLocation": "/root/workspace/src/ESP32_aws_iot.ino",
+  "toolsFolders": "/root/arduino/tools-builder,/root/arduino/hardware/tools/avr,/root/.arduino15/packages"
+}

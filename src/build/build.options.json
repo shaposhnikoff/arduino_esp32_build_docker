@@ -1,0 +1,11 @@
+{
+  "additionalFiles": "",
+  "builtInLibrariesFolders": "/root/arduino/libraries",
+  "customBuildProperties": "build.path=build,board=esp32,build.warn_data_percentage=75,runtime.tools.arduinoOTA.path=/root/arduino/hardware/tools/avr,runtime.tools.arduinoOTA-1.2.1.path=/root/arduino/hardware/tools/avr,runtime.tools.avr-gcc.path=/root/arduino/hardware/tools/avr,runtime.tools.avr-gcc-5.4.0-atmel3.6.1-arduino2.path=/root/arduino/hardware/tools/avr,runtime.tools.avrdude.path=/root/arduino/hardware/tools/avr,runtime.tools.avrdude-6.3.0-arduino14.path=/root/arduino/hardware/tools/avr",
+  "fqbn": "arduino:avr:yun",
+  "hardwareFolders": "/root/arduino/hardware,/root/.arduino15/packages",
+  "otherLibrariesFolders": "/root/Arduino/libraries",
+  "runtime.ide.version": "10809",
+  "sketchLocation": "/root/workspace/src/ESP32_aws_iot.ino",
+  "toolsFolders": "/root/arduino/tools-builder,/root/arduino/hardware/tools/avr,/root/.arduino15/packages"
+}
