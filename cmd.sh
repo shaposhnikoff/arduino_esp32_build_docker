@@ -4,6 +4,26 @@ export PATH=$PATH:/root/arduino/:/root/arduino/java/bin/
 
 chmod +x /root/arduino/arduino
 
+parse_yaml() {
+    local prefix=$2
+    local s
+    local w
+    local fs
+    s='[[:space:]]*'
+    w='[a-zA-Z0-9_]*'
+    fs="$(echo @|tr @ '\034')"
+    sed -ne "s|^\($s\)\($w\)$s:$s\"\(.*\)\"$s\$|\1$fs\2$fs\3|p" \
+        -e "s|^\($s\)\($w\)$s[:-]$s\(.*\)$s\$|\1$fs\2$fs\3|p" "$1" |
+    awk -F"$fs" '{
+    indent = length($1)/2;
+    vname[indent] = $2;
+    for (i in vname) {if (i > indent) {delete vname[i]}}
+        if (length($3) > 0) {
+            vn=""; for (i=0; i<indent; i++) {vn=(vn)(vname[i])("_")}
+            printf("%s%s%s=(\"%s\")\n", "'"$prefix"'",vn, $2, $3);
+        }
+    }' | sed 's/_=/+=/g'
+}
 
 set +e # skip errors
 
@@ -22,6 +42,46 @@ fi
 
 # Build
 
+
+# Parse thinx.yml config
+#BOARD="esp32"
+#SOURCE=.
+#F_CPU=80
+#FLASH_SIZE="4M"
+
+#YMLFILE=$(find /opt/workspace -name "thinx.yml" | head -n 1)
+
+#if [[ ! -f $YMLFILE ]]; then
+#  echo "No thinx.yml found"
+#  exit 1
+#else
+#  echo "Reading thinx.yml:"
+#  cat "$YMLFILE"
+#  echo
+#  eval $(parse_yaml "$YMLFILE" "")
+#  BOARD=${arduino_platform}:${arduino_arch}:${arduino_board}
+
+#  if [ ! -z "${arduino_flash_size}" ]; then
+#    FLASH_SIZE="${arduino_flash_size}"
+#  fi
+
+#  if [ ! -z "${arduino_f_cpu}" ]; then
+#    F_CPU="${arduino_f_cpu}"
+#  fi
+
+#  if [ ! -z "${arduino_source}" ]; then
+#    SOURCE="${arduino_source}"
+#  fi
+
+#  echo "- board: ${BOARD}"
+#  echo "- libs: ${arduino_libs}"
+#  echo "- flash_ld: ${arduino_flash_ld}"
+#  echo "- f_cpu: $F_CPU"
+#  echo "- flash_size: $FLASH_SIZE"
+#  echo "- source: $SOURCE"
+#fi
+
+# TODO: if platform = esp8266 (dunno why but this lib collides with ESP8266Wifi)
 rm -rf /root/arduino/libraries/WiFi
 
 BUILD_DIR="/tmp/build"
@@ -56,6 +116,16 @@ fi
 
 
 
+
+#if [ -d "../lib" ]; then
+#    echo "Copying user libraries (2)..."
+#    cp -fR ../lib/** /root/arduino/libraries
+#fi
+
+## Use default library if none set in thinx.yml
+#if [ -z "${arduino_libs}" ]; then
+#    arduino_libs="THiNX"
+#fi
 
 # Install managed libraries from thinx.yml
 for lib in ${arduino_libs}; do
