@@ -59,6 +59,9 @@ WORKDIR /root
 
 COPY preferences.txt  /root/.arduino15/preferences.txt
 
+COPY src/ /root/src/
+COPY lib/ /root/lib/
+
 COPY cmd.sh /root/
 CMD /root/cmd.sh
 
