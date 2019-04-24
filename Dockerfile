@@ -1,4 +1,5 @@
-FROM ubuntu
+FROM ubuntu:latest
+
 MAINTAINER shaposhnikoff
 
 RUN apt-get update && apt-get install -y -f software-properties-common \
