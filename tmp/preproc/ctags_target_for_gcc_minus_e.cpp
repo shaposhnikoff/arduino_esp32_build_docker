@@ -1,179 +1,285 @@
-# 1 "/root/workspace/src/ESP32_aws_iot.ino"
-# 1 "/root/workspace/src/ESP32_aws_iot.ino"
-/* This example uses an ESP32 to connect to AWS IoT using X.509 certificates.
-by Evandro Luis Copercini - Public domain - 2017
+# 1 "/root/workspace/src/AWS_S3_OTA_Update.ino"
+# 1 "/root/workspace/src/AWS_S3_OTA_Update.ino"
+/**
+   AWS S3 OTA Update
+   Date: 14th June 2017
+   Author: Arvind Ravulavaru <https://github.com/arvindr21>
+   Purpose: Perform an OTA update from a bin located in Amazon S3 (HTTP Only)
 
-1- Create a thing http://docs.aws.amazon.com/iot/latest/developerguide/register-device.html
-and generate a device certificate http://docs.aws.amazon.com/iot/latest/developerguide/create-device-certificate.html
+   Upload:
+   Step 1 : Download the sample bin file from the examples folder
+   Step 2 : Upload it to your Amazon S3 account, in a bucket of your choice
+   Step 3 : Once uploaded, inside S3, select the bin file >> More (button on top of the file list) >> Make Public
+   Step 4 : You S3 URL => http://bucket-name.s3.ap-south-1.amazonaws.com/sketch-name.ino.bin
+   Step 5 : Build the above URL and fire it either in your browser or curl it `curl -I -v http://bucket-name.ap-south-1.amazonaws.com/sketch-name.ino.bin` to validate the same
+   Step 6:  Plug in your SSID, Password, S3 Host and Bin file below
 
-2- Edit this code with your Wifi credentials, AWS IoT endpoint and certificates.
+   Build & upload
+   Step 1 : Menu > Sketch > Export Compiled Library. The bin file will be saved in the sketch folder (Menu > Sketch > Show Sketch folder)
+   Step 2 : Upload bin to S3 and continue the above process
 
-3- RUN! 
+   // Check the bottom of this sketch for sample serial monitor log, during and after successful OTA Update
 */
 
-# 13 "/root/workspace/src/ESP32_aws_iot.ino" 2
-# 14 "/root/workspace/src/ESP32_aws_iot.ino" 2
+# 23 "/root/workspace/src/AWS_S3_OTA_Update.ino" 2
+# 24 "/root/workspace/src/AWS_S3_OTA_Update.ino" 2
 
-const char* ssid = "MikroTik-191AD2";
-const char* pass = "zebra222";
+WiFiClient client;
 
+// Variables to validate
+// response from S3
+long contentLength = 0;
+bool isValidContentType = false;
 
-const char *awsEndPoint = "a1eqclzwh5i9yu-ats.iot.us-east-1.amazonaws.com";
-const char *subscribeTopic = "inTopic"; // Can be changed to shadow topics...
-const char *publishTopic = "outTopic";
+// Your SSID and PSWD that the chip needs
+// to connect to
+const char* SSID = "YOUR-SSID";
+const char* PSWD = "YOUR-SSID-PSWD";
 
-WiFiClientSecure net;
-MQTTClient client;
+// S3 Bucket Config
+String host = "bucket-name.s3.ap-south-1.amazonaws.com"; // Host => bucket-name.s3.region.amazonaws.com
+int port = 80; // Non https. For HTTPS 443. As of today, HTTPS doesn't work.
+String bin = "/sketch-name.ino.bin"; // bin file name with a slash in front.
 
-unsigned long lastMillis = 0;
-
-long lastMsg = 0;
-char msg[50];
-int value = 0;
-
-
-/* root CA can be downloaded in:
-	https://www.symantec.com/content/en/us/enterprise/verisign/roots/VeriSign-Class%203-Public-Primary-Certification-Authority-G5.pem
-*/
-const char* rootCABuff =
- "-----BEGIN CERTIFICATE-----\n"
- "MIIE0zCCA7ugAwIBAgIQGNrRniZ96LtKIVjNzGs7SjANBgkqhkiG9w0BAQUFADCB\n"
- "yjELMAkGA1UEBhMCVVMxFzAVBgNVBAoTDlZlcmlTaWduLCBJbmMuMR8wHQYDVQQL\n"
- "ExZWZXJpU2lnbiBUcnVzdCBOZXR3b3JrMTowOAYDVQQLEzEoYykgMjAwNiBWZXJp\n"
- "U2lnbiwgSW5jLiAtIEZvciBhdXRob3JpemVkIHVzZSBvbmx5MUUwQwYDVQQDEzxW\n"
- "ZXJpU2lnbiBDbGFzcyAzIFB1YmxpYyBQcmltYXJ5IENlcnRpZmljYXRpb24gQXV0\n"
- "aG9yaXR5IC0gRzUwHhcNMDYxMTA4MDAwMDAwWhcNMzYwNzE2MjM1OTU5WjCByjEL\n"
- "MAkGA1UEBhMCVVMxFzAVBgNVBAoTDlZlcmlTaWduLCBJbmMuMR8wHQYDVQQLExZW\n"
- "ZXJpU2lnbiBUcnVzdCBOZXR3b3JrMTowOAYDVQQLEzEoYykgMjAwNiBWZXJpU2ln\n"
- "biwgSW5jLiAtIEZvciBhdXRob3JpemVkIHVzZSBvbmx5MUUwQwYDVQQDEzxWZXJp\n"
- "U2lnbiBDbGFzcyAzIFB1YmxpYyBQcmltYXJ5IENlcnRpZmljYXRpb24gQXV0aG9y\n"
- "aXR5IC0gRzUwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCvJAgIKXo1\n"
- "nmAMqudLO07cfLw8RRy7K+D+KQL5VwijZIUVJ/XxrcgxiV0i6CqqpkKzj/i5Vbex\n"
- "t0uz/o9+B1fs70PbZmIVYc9gDaTY3vjgw2IIPVQT60nKWVSFJuUrjxuf6/WhkcIz\n"
- "SdhDY2pSS9KP6HBRTdGJaXvHcPaz3BJ023tdS1bTlr8Vd6Gw9KIl8q8ckmcY5fQG\n"
- "BO+QueQA5N06tRn/Arr0PO7gi+s3i+z016zy9vA9r911kTMZHRxAy3QkGSGT2RT+\n"
- "rCpSx4/VBEnkjWNHiDxpg8v+R70rfk/Fla4OndTRQ8Bnc+MUCH7lP59zuDMKz10/\n"
- "NIeWiu5T6CUVAgMBAAGjgbIwga8wDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8E\n"
- "BAMCAQYwbQYIKwYBBQUHAQwEYTBfoV2gWzBZMFcwVRYJaW1hZ2UvZ2lmMCEwHzAH\n"
- "BgUrDgMCGgQUj+XTGoasjY5rw8+AatRIGCx7GS4wJRYjaHR0cDovL2xvZ28udmVy\n"
- "aXNpZ24uY29tL3ZzbG9nby5naWYwHQYDVR0OBBYEFH/TZafC3ey78DAJ80M5+gKv\n"
- "MzEzMA0GCSqGSIb3DQEBBQUAA4IBAQCTJEowX2LP2BqYLz3q3JktvXf2pXkiOOzE\n"
- "p6B4Eq1iDkVwZMXnl2YtmAl+X6/WzChl8gGqCBpH3vn5fJJaCGkgDdk+bW48DW7Y\n"
- "5gaRQBi5+MHt39tBquCWIMnNZBU4gcmU7qKEKQsTb47bDN0lAtukixlE0kF6BWlK\n"
- "WE9gyn6CagsCqiUXObXbf+eEZSqVir2G3l6BFoMtEMze/aiCKm0oHw0LxOXnGiYZ\n"
- "4fQRbxC1lfznQgUy286dUV4otp6F01vvpX1FQHKOtw5rDgb7MzVIcbidJ4vEZV8N\n"
- "hnacRHr2lVz2XTIIM6RUthg/aFzyQkqFOFSDX9HoLPKsEdao7WNq\n"
- "-----END CERTIFICATE-----\n";
-
-// Fill with your certificate.pem.crt with LINE ENDING
-const char* certificateBuff =
- "-----BEGIN CERTIFICATE-----\n"
- "144gW4ppxkKgxw4Wxg4Vx4a4nOX/Wz2zxt3ZSa/NWPg4W4qw1x0GpSnGS4W3gnzW\n"
- "pwgx1z0xSzW4WgNVWxs1nkWtqXpvW4WXZW4gg2Vqg124ZX1gTz1WWWW6W24gq29t\n"
- "4z2gqq4gTg1TZWW0gGx24WNgPVghp2hpW1g0W24gnz1VgzxzWw0xNzxx14gxN444\n"
- "NgNxWw00OTzq1zzq1zgtNT2x1W4xHgxxWgNVWx11z0WXgqW4W1ngn2VqgG21xWNh\n"
- "gGgwggz41x0GpSnGS4W3gnzWxngxx44WgwxwggzKxo4WxnptqW4g6o9t2atWzTq9\n"
- "np3gg4W2K22TqptgW41kn6vtqGNOG/xH0g91/2Np44NZ3zx0O4x4tgGzH4qH20OK\n"
- "G4V2TtOgs4W3/19pqxVxNWxgxtx44p111ggag1On/kgZZ44x34xvgWg0xw4zq2pz\n"
- "n4npWpWnwaW2xOsZKp/6g/xpW1H9hX1SW1gq4tp9zqx2Wx4V39w0zzqt7hpW0xpp\n"
- "2n/q0vos2o4Oqgn62g4Vs81n1WWtx04ggzt4gpxzgg4Wg/VnV2PnKpg17tW4gqWn\n"
- "q1qXaZxznnWKZqgx44g4GqWz6a442Ka4pgK4ZzH4zxXVvWnpxSq6gk1Xg4Z1px1n\n"
- "NWthxg1WxxG4qgWz1W8Gx1gg4wnq1WxxWN4Wkspt4h3zko1W8Ttp2k4t9tW/1W0G\n"
- "x1ggggnWWWS7knn6WngxW1OgtgpX8WgNWWPwxgx1WgNVHg1WxW8zx4xx1x4Gx1gg\n"
- "gwzW/wnzxw4HggxNWgknhk4G9w0WxnsWxxOpxnzxWZS440gt2xpW4PXz43nXZz13\n"
- "S3WxgWoqgW1OnVaN1n4qzVzW2x29p0z2ZPw4tgxhg/t2zGtaV24WWgggWX6n4gxx\n"
- "XZVnh2ZVng12tN4X2ht/1a1psv6k34g2gs71114pt0gpV3TkSkp/3wvW2Xwt/78H\n"
- "GxW4x4Tvt8pzx4GogKgGzW2PgKS3p10z4n44pN4sNpqtpppHxPxqp3zKW7Kwxpv4\n"
- "qgW2pgW74ooHt6xWPzZ87xxq7s2xx1nS91zO9Ww21z2gpzazNtsKtxgn3Tgx2Vx8\n"
- "WgsNTz/TTvwWGwg2t2vpn4Hqo4oXnWT4p4gntatzO06z9nZt12gxxgqgWWPHwn==\n"
- "-----END CERTIFICATE-----\n";
-
-
-// Fill with your private.pem.key with LINE ENDING
-const char* privateKeyBuff =
- "-----BEGIN RSA PRIVATE KEY-----\n"
- "144zow4WxxKpxnzxgWG44OnPzZWggp08vZwt6wqxZS4tg2xgx24tp4agaWW4Thvw\n"
- "W9zWTP94xS44Wgx1gggG4WxxnhqWWtgg4h4Wgk7Tn74hg/9Wxp12pTW8qGgWgpx4\n"
- "NTxw/2ggnvtzWWq4Wtax21G0g1ppXstgnkpxg2gn6sP1q24gGSnWaoP8nnth/qV9\n"
- "gnzWG47xWX11ZgpSWg/pN13sgz4XWtGnH4gP8t262NnpT1W4atoOWWPNx4Wnzpgp\n"
- "4WHgq7nn10VpWn/1gWSz64nWNzaW47s101tp2/1pp0zxS1WHpzpxaW1WXgvoqSqv\n"
- "4XHS4GXh48wW1W1p6WksggtgW142gxn4kgVgqn4gxnxWxo4WxzXSahnSPxaq8nWp\n"
- "qxHVSOTWWxw142g9pV8Wga92q1Oavp9hPgxWan0O1OWpHqV8n8n3gvo4akT7gpw4\n"
- "Wz16pW0xt6gqxnPHp4xt6gPK2T9X43v2WWhp2nHggn6VgW9Tz34Xg48671nsHggx\n"
- "Xng89gqgghnkpg47axoxgWzp4Hka1s7ZzSnqnHgW4axtWgzhnzNvnpnn10Wq2xVz\n"
- "vn27g3t167Sgtq41WW4vGngK4vTptpN4240Zxznx4V4GX910vWW9Oxg1n0xnng34\n"
- "4gxWxNxgzWn2x4W4Xgq62NPPGxxz4p64gWWwWTxkwnzWSpztOxKo9sKT8n4a44W4\n"
- "4g1WP4gpgqzx9gpX4xVn1NggWS7nV3P19WXxzpNPx02q26WpnaV4g8W9ZZTH/g2H\n"
- "3gqox1oWgk2gWWXnx3sg2tzKn4HX4ZSzKW7gzz2zWpt9WtGgWG23q64hg124xnvz\n"
- "PX984gWqW4ztg4z2h4x4S44g8x4gpq/ZtGtg42zvZ441Gn/K9z3WHp8pgqzxt4w2\n"
- "W8ognKgtnX1txtxWnhpzGTppqgX1SggvosgVz9O11ggP1KH4xHpZ3NgspzwWVxaO\n"
- "2z3NK1sWKG/18gg1z88gWHN98O2gp42ZxqVwOznnhtT42Zp824PhhW4n1kz1hgvP\n"
- "xs1gWz1gPnzTtX99s01nvVNn1WxK1oXxwv1Pn18pgqW4V1vx1hGzg2V77gtgk4Wa\n"
- "nzaxgTNp/gpKztxg44gnVGpnWKntKhW449gn14xwnS1HZwzNSzGg14xg2ghWPHGg\n"
- "WnWg4gW7gnWz/X4pg2pPWzH4kngNzVWgp4gWgVxnZv6H2XZ12VvZSvxxn64SqW4h\n"
- "g3twngt1Vp1Wxg14gw7VgwKWgzn111WxtGn1aWO68VK1GzG1n/o8xzn14g40Pxg1\n"
- "WnW1/pnq7Ot0gXgg8xGO7Wgt24gnn6kXznggNg2xxHngg74Z4W/7W444V0Wkh2nV\n"
- "zo4Tq4gVxKoWzxpZ2zpz2gTs62x24PT4xgnggVvnq8gzp204z27On1K1P4hgzwHW\n"
- "7tg/xoGWxNxzw/pnao4zZqZkg91Gt/qqw0kgK9nW423ggxz1zP2vxnXS6hn2vv2n\n"
- "zzpg444t2pW1thtKKg8W0gqn1w1gSWgnWZKz62Wh3tWWg4W1gwO46o9WgWxv44xg\n"
- "W4W44W4px7s2Kpgg6/nNPWs48qzzOxTxh34p1041PzOx2W2W994h\n"
- "-----END RSA PRIVATE KEY-----\n";
-
-
-void setup() {
- Serial.begin(115200);
- WiFi.begin(ssid, pass);
-
- net.setCACert(rootCABuff);
- net.setCertificate(certificateBuff);
- net.setPrivateKey(privateKeyBuff);
-
- client.begin(awsEndPoint, 8883, net);
-
- connect();
+// Utility to extract header value from headers
+String getHeaderValue(String header, String headerName) {
+  return header.substring(strlen(headerName.c_str()));
 }
 
-void connect() {
- Serial.print("Checking wifi...");
- while (WiFi.status() != WL_CONNECTED) {
-  Serial.print(".");
-  delay(1000);
- }
+// OTA Logic 
+void execOTA() {
+  Serial.println("Connecting to: " + String(host));
+  // Connect to S3
+  if (client.connect(host.c_str(), port)) {
+    // Connection Succeed.
+    // Fecthing the bin
+    Serial.println("Fetching Bin: " + String(bin));
 
- Serial.print("\nconnecting...");
- while (!client.connect("ESP32")) {
-  Serial.print(".");
-  delay(100);
- }
+    // Get the contents of the bin file
+    client.print(String("GET ") + bin + " HTTP/1.1\r\n" +
+                 "Host: " + host + "\r\n" +
+                 "Cache-Control: no-cache\r\n" +
+                 "Connection: close\r\n\r\n");
 
- Serial.println("\nconnected!");
+    // Check what is being sent
+    //    Serial.print(String("GET ") + bin + " HTTP/1.1\r\n" +
+    //                 "Host: " + host + "\r\n" +
+    //                 "Cache-Control: no-cache\r\n" +
+    //                 "Connection: close\r\n\r\n");
 
- client.subscribe(subscribeTopic);
- client.unsubscribe(subscribeTopic);
+    unsigned long timeout = millis();
+    while (client.available() == 0) {
+      if (millis() - timeout > 5000) {
+        Serial.println("Client Timeout !");
+        client.stop();
+        return;
+      }
+    }
+    // Once the response is available,
+    // check stuff
+
+    /*
+       Response Structure
+        HTTP/1.1 200 OK
+        x-amz-id-2: NVKxnU1aIQMmpGKhSwpCBh8y2JPbak18QLIfE+OiUDOos+7UftZKjtCFqrwsGOZRN5Zee0jpTd0=
+        x-amz-request-id: 2D56B47560B764EC
+        Date: Wed, 14 Jun 2017 03:33:59 GMT
+        Last-Modified: Fri, 02 Jun 2017 14:50:11 GMT
+        ETag: "d2afebbaaebc38cd669ce36727152af9"
+        Accept-Ranges: bytes
+        Content-Type: application/octet-stream
+        Content-Length: 357280
+        Server: AmazonS3
+                                   
+        {{BIN FILE CONTENTS}}
+
+    */
+    while (client.available()) {
+      // read line till /n
+      String line = client.readStringUntil('\n');
+      // remove space, to check if the line is end of headers
+      line.trim();
+
+      // if the the line is empty,
+      // this is end of headers
+      // break the while and feed the
+      // remaining `client` to the
+      // Update.writeStream();
+      if (!line.length()) {
+        //headers ended
+        break; // and get the OTA started
+      }
+
+      // Check if the HTTP Response is 200
+      // else break and Exit Update
+      if (line.startsWith("HTTP/1.1")) {
+        if (line.indexOf("200") < 0) {
+          Serial.println("Got a non 200 status code from server. Exiting OTA Update.");
+          break;
+        }
+      }
+
+      // extract headers here
+      // Start with content length
+      if (line.startsWith("Content-Length: ")) {
+        contentLength = atol((getHeaderValue(line, "Content-Length: ")).c_str());
+        Serial.println("Got " + String(contentLength) + " bytes from server");
+      }
+
+      // Next, the content type
+      if (line.startsWith("Content-Type: ")) {
+        String contentType = getHeaderValue(line, "Content-Type: ");
+        Serial.println("Got " + contentType + " payload.");
+        if (contentType == "application/octet-stream") {
+          isValidContentType = true;
+        }
+      }
+    }
+  } else {
+    // Connect to S3 failed
+    // May be try?
+    // Probably a choppy network?
+    Serial.println("Connection to " + String(host) + " failed. Please check your setup");
+    // retry??
+    // execOTA();
+  }
+
+  // Check what is the contentLength and if content type is `application/octet-stream`
+  Serial.println("contentLength : " + String(contentLength) + ", isValidContentType : " + String(isValidContentType));
+
+  // check contentLength and content type
+  if (contentLength && isValidContentType) {
+    // Check if there is enough to OTA Update
+    bool canBegin = Update.begin(contentLength);
+
+    // If yes, begin
+    if (canBegin) {
+      Serial.println("Begin OTA. This may take 2 - 5 mins to complete. Things might be quite for a while.. Patience!");
+      // No activity would appear on the Serial monitor
+      // So be patient. This may take 2 - 5mins to complete
+      size_t written = Update.writeStream(client);
+
+      if (written == contentLength) {
+        Serial.println("Written : " + String(written) + " successfully");
+      } else {
+        Serial.println("Written only : " + String(written) + "/" + String(contentLength) + ". Retry?" );
+        // retry??
+        // execOTA();
+      }
+
+      if (Update.end()) {
+        Serial.println("OTA done!");
+        if (Update.isFinished()) {
+          Serial.println("Update successfully completed. Rebooting.");
+          ESP.restart();
+        } else {
+          Serial.println("Update not finished? Something went wrong!");
+        }
+      } else {
+        Serial.println("Error Occurred. Error #: " + String(Update.getError()));
+      }
+    } else {
+      // not enough space to begin OTA
+      // Understand the partitions and
+      // space availability
+      Serial.println("Not enough space to begin OTA");
+      client.flush();
+    }
+  } else {
+    Serial.println("There was no content in the response");
+    client.flush();
+  }
+}
+
+void setup() {
+  //Begin Serial
+  Serial.begin(115200);
+  delay(10);
+
+  Serial.println("Connecting to " + String(SSID));
+
+  // Connect to provided SSID and PSWD
+  WiFi.begin(SSID, PSWD);
+
+  // Wait for connection to establish
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print("."); // Keep the serial monitor lit!
+    delay(500);
+  }
+
+  // Connection Succeed
+  Serial.println("");
+  Serial.println("Connected to " + String(SSID));
+
+  // Execute OTA Update
+  execOTA();
 }
 
 void loop() {
-
- if (!client.connected()) {
-  connect();
- }
- client.loop();
- delay(100);
-
- if (millis() - lastMillis > 2000) { //2 seconds non blocking delay
-  lastMillis = millis();
-  ++value;
-  snprintf (msg, 75, "Hello world #%ld", value);
-  Serial.print("Publish message: ");
-  Serial.println(msg);
-  client.publish(publishTopic, msg);
- }
+  // chill
 }
 
-void messageReceived(String topic, String payload, char * bytes, unsigned int length) {
- Serial.print("incoming: ");
- Serial.print(topic);
- Serial.print(" - ");
- Serial.print(payload);
- Serial.println();
-}
+/*
+ * Serial Monitor log for this sketch
+ * 
+ * If the OTA succeeded, it would load the preference sketch, with a small modification. i.e.
+ * Print `OTA Update succeeded!! This is an example sketch : Preferences > StartCounter`
+ * And then keeps on restarting every 10 seconds, updating the preferences
+ * 
+ * 
+      rst:0x10 (RTCWDT_RTC_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+      configsip: 0, SPIWP:0x00
+      clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+      mode:DIO, clock div:1
+      load:0x3fff0008,len:8
+      load:0x3fff0010,len:160
+      load:0x40078000,len:10632
+      load:0x40080000,len:252
+      entry 0x40080034
+      Connecting to SSID
+      ......
+      Connected to SSID
+      Connecting to: bucket-name.s3.ap-south-1.amazonaws.com
+      Fetching Bin: /StartCounter.ino.bin
+      Got application/octet-stream payload.
+      Got 357280 bytes from server
+      contentLength : 357280, isValidContentType : 1
+      Begin OTA. This may take 2 - 5 mins to complete. Things might be quite for a while.. Patience!
+      Written : 357280 successfully
+      OTA done!
+      Update successfully completed. Rebooting.
+      ets Jun  8 2016 00:22:57
+      
+      rst:0x10 (RTCWDT_RTC_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+      configsip: 0, SPIWP:0x00
+      clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+      mode:DIO, clock div:1
+      load:0x3fff0008,len:8
+      load:0x3fff0010,len:160
+      load:0x40078000,len:10632
+      load:0x40080000,len:252
+      entry 0x40080034
+      
+      OTA Update succeeded!! This is an example sketch : Preferences > StartCounter
+      Current counter value: 1
+      Restarting in 10 seconds...
+      E (102534) wifi: esp_wifi_stop 802 wifi is not init
+      ets Jun  8 2016 00:22:57
+      
+      rst:0x10 (RTCWDT_RTC_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+      configsip: 0, SPIWP:0x00
+      clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+      mode:DIO, clock div:1
+      load:0x3fff0008,len:8
+      load:0x3fff0010,len:160
+      load:0x40078000,len:10632
+      load:0x40080000,len:252
+      entry 0x40080034
+      
+      OTA Update succeeded!! This is an example sketch : Preferences > StartCounter
+      Current counter value: 2
+      Restarting in 10 seconds...
+
+      ....
+ * 
+ */
