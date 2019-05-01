@@ -62,8 +62,8 @@ COPY preferences.txt  /root/.arduino15/preferences.txt
 
 COPY src/ /root/src/
 COPY lib/ /root/lib/
-
 COPY cmd.sh /root/
+RUN chmod 777 /root/cmd.sh
 CMD /root/cmd.sh
 
 
