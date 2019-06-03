@@ -1,7 +1,7 @@
 sudo docker stop `sudo docker ps -a -q`
 sudo docker build . -t xxx
 
-exit 0
+#exit 0
 sudo chmod -R 777 lib src build
 
 

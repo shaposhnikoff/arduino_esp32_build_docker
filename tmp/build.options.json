@@ -6,6 +6,6 @@
   "hardwareFolders": "/root/arduino/hardware,/root/.arduino15/packages",
   "otherLibrariesFolders": "/root/Arduino/libraries",
   "runtime.ide.version": "10809",
-  "sketchLocation": "/root/workspace/src/AWS_S3_OTA_Update.ino",
+  "sketchLocation": "/root/workspace/src/ESP32_aws_iot.ino",
   "toolsFolders": "/root/arduino/tools-builder,/root/arduino/hardware/tools/avr,/root/.arduino15/packages"
 }
